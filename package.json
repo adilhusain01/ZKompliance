@@ -13,6 +13,7 @@
     "contract:test": "cd contracts && cargo test",
     "contract:bindings": "scripts/build-contract-bindings.sh",
     "deploy:testnet": "scripts/deploy-testnet.sh",
+    "bootstrap:testnet": "scripts/bootstrap-testnet.sh",
     "zk:fixture": "tsx scripts/generate-contract-fixture.ts",
     "contract:verifier": "tsx scripts/generate-contract-verifier.ts"
   },

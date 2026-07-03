@@ -34,12 +34,14 @@ statements:
   - generated proving and verification artifacts;
   - proof generation in the browser/app runtime;
   - local verifier checks before contract authorization.
+- Soroban BN254 pairing verifier generated from the ZoKrates verification key.
 - `compliance_gateway` Soroban contract with:
   - admin initialization;
   - issuer allowlist and quorum root governance;
   - KYC and sanctions root rotation;
   - corridor policy and proof-tier gating;
   - nullifier replay protection;
+  - on-chain Groth16 public-input binding and pairing verification;
   - payment-intent authorization records;
   - atomic Stellar Asset Contract transfer path through
     `authorize_and_transfer`;
@@ -57,13 +59,11 @@ sender agent
   -> Stellar payment/path payment settlement
 ```
 
-The frontend generates an actual Groth16 proof for the compliance statement and
-verifies it locally before producing the contract request. The contract records a
-`proof_hash`, `proof_inputs_hash`, proof tier, roots, commitments, nullifier, and
-payment intent. The remaining cryptographic hardening step is to port the
-generated verification key into a Soroban BN254 pairing verifier so proof
-verification happens on-chain instead of verifier-bound preflight plus on-chain
-commitment.
+The frontend generates an actual Groth16 proof for the compliance statement,
+verifies it locally, and submits the proof plus public inputs to the gateway.
+The contract binds the public inputs to current roots, commitments, nullifier,
+amount, and corridor limit, then verifies the proof with Soroban BN254 pairing
+host functions before recording or settling a payment intent.
 
 ## Technical Direction
 
@@ -106,10 +106,33 @@ Regenerate TypeScript bindings:
 npm run contract:bindings
 ```
 
+Regenerate the Soroban verifier and Rust proof fixture after changing the ZK
+circuit:
+
+```bash
+npm run zk:generate
+npm run contract:verifier
+npm run zk:fixture
+```
+
 Deploy to Testnet:
 
 ```bash
 STELLAR_ACCOUNT=your-funded-cli-identity npm run deploy:testnet
+```
+
+Bootstrap a deployed Testnet contract with the demo roots and corridor:
+
+```bash
+CONTRACT_ID=your-contract-id STELLAR_ACCOUNT=your-funded-cli-identity npm run bootstrap:testnet
+```
+
+Current Testnet deployment:
+
+```text
+contract: CDVI6JSZYYK2BRCCZAXPZHOVMIDU4N6XQFRYYVJ5ETYMUNMAXRS3OZGE
+admin:    GABMPCECAIYWFD5NN5QH4TBEMYZDPIU3NDEFKWGMG364R7BBXP46BY5H
+network:  Test SDF Network ; September 2015
 ```
 
 ## Project Layout
@@ -125,15 +148,16 @@ src/lib/zk/compliance-proof-core.ts
 src/lib/zk/compliance-proof.ts
 src/contracts/compliance_gateway/src/index.ts
 contracts/contracts/compliance_gateway/src/lib.rs
+contracts/contracts/compliance_gateway/src/verifier.rs
 contracts/contracts/compliance_gateway/src/test.rs
+scripts/generate-contract-verifier.ts
+scripts/bootstrap-testnet.sh
 ```
 
 ## Remaining Real Work
 
-- Port the generated ZoKrates verification key into a Soroban BN254 pairing
-  verifier and call it inside `authorize_payment` / `authorize_and_transfer`.
 - Replace the demo field hash in the circuit with a production Poseidon Merkle
   tree circuit compatible with Soroban Poseidon host functions.
-- Add a deployed Testnet configuration once a funded source account is provided.
-- Expand the UI from proof preflight to full Freighter submission once the
-  Testnet contract ID is available.
+- Expand the UI from proof preflight to full Freighter submission and live
+  Testnet state readback.
+- Add issuer/operator dashboards for rotating KYC and sanctions roots.
