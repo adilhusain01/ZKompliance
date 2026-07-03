@@ -11,8 +11,8 @@ ZK Compliance Gateway lets an autonomous payment agent prove KYC, sanctions, and
 3. Select `USDC-MXN`, choose an amount under the corridor limit, and generate the proof.
 4. Point out the three public facts the proof binds: current KYC root, current sanctions root, and amount under corridor limit.
 5. Connect Freighter on Stellar Testnet.
-6. Submit to Soroban.
-7. Open the transaction on Stellar Expert and show the gateway authorization event.
+6. Submit to Soroban with either `Authorize only` or `Atomic native SAC transfer`.
+7. Open the transaction on Stellar Expert and show the gateway authorization or settlement event.
 
 ## What Is Real
 
@@ -20,7 +20,7 @@ ZK Compliance Gateway lets an autonomous payment agent prove KYC, sanctions, and
 - The proof uses Poseidon for roots, commitments, and nullifiers.
 - The Soroban contract verifies the proof on-chain with BN254 pairing host functions.
 - The contract rejects mismatched public inputs, low proof tiers, over-limit amounts, replayed nullifiers, and duplicate intents.
-- The deployed Testnet contract is initialized with demo KYC and sanctions roots and an active `USDCMXN` corridor.
+- The deployed Testnet contract is initialized with demo KYC and sanctions roots, three active corridors, and native SAC settlement for the atomic transfer path.
 
 ## Testnet Deployment
 
@@ -38,11 +38,17 @@ USDCPHP   USDC  limit 1,200  min tier 2
 EURCUSDC  EURC  limit 8,000  min tier 3
 ```
 
+Atomic settlement demo asset:
+
+```text
+native SAC  CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+```
+
 ## Why Stellar
 
 Stellar already has the corridor, anchor, and regulated asset concepts this project needs. Soroban gives the compliance gateway programmable enforcement, while BN254 host functions make verifier execution practical enough to move proof verification into the settlement transaction.
 
 ## Next Protocol Steps
 
-- Extend `authorize_and_transfer` to a Testnet Stellar Asset Contract demo asset.
+- Add regulated asset issuance/minting around non-native Testnet demo assets.
 - Add quorum proposal and approval flows for multi-issuer root governance.

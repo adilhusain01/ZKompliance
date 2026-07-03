@@ -13,7 +13,7 @@ type ComplianceState = PaymentInput & {
 
 export const useComplianceStore = create<ComplianceState>((set) => ({
   corridor: "USDC-MXN",
-  amount: 420,
+  amount: 25,
   sender: "acme-payroll-us",
   receiver: "worker-734-mx",
   destination: "demo-recipient",

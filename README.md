@@ -28,7 +28,8 @@ statements:
 - Zustand for local payment-intent state.
 - Stellar SDK for Stellar account validation.
 - Freighter helpers for wallet connection and transaction signing.
-- Live Freighter submission UI for `authorize_payment` on Testnet.
+- Live Freighter submission UI for `authorize_payment` and
+  `authorize_and_transfer` on Testnet.
 - Stellar CLI Soroban workspace under `contracts/`.
 - ZoKrates Groth16/BN128 compliance proof pipeline:
   - circuit source;
@@ -57,7 +58,7 @@ statements:
 sender agent
   -> corridor router
   -> local proof builder
-  -> compliance_gateway.authorize_payment(...)
+  -> compliance_gateway.authorize_payment(...) or authorize_and_transfer(...)
   -> Stellar payment/path payment settlement
 ```
 
@@ -145,6 +146,12 @@ USDCPHP   USDC  limit 1,200  min tier 2
 EURCUSDC  EURC  limit 8,000  min tier 3
 ```
 
+Atomic settlement demo asset:
+
+```text
+native SAC  CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+```
+
 ## Project Layout
 
 ```text
@@ -166,5 +173,5 @@ scripts/bootstrap-testnet.sh
 
 ## Remaining Real Work
 
-- Extend `authorize_and_transfer` to a Testnet Stellar Asset Contract demo asset.
+- Add regulated asset issuance/minting around non-native Testnet demo assets.
 - Add quorum proposal/approval UI for multi-issuer root governance.

@@ -37,7 +37,7 @@ export const corridors = [
     source: "US",
     destination: "MX",
     asset: "USDC",
-    localAsset: "MXNX",
+    localAsset: "MXN",
     limit: 2500,
     feeBps: 18,
     minTier: 2,

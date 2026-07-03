@@ -56,6 +56,7 @@ import {
 import { useComplianceStore } from "@/lib/compliance/store";
 import {
   buildGatewayAuthorization,
+  buildGatewayAtomicTransfer,
   buildRootRotation,
   bufferToHex,
   connectFreighterWallet,
@@ -67,10 +68,14 @@ import {
 
 const gatewayContractId =
   process.env.NEXT_PUBLIC_COMPLIANCE_GATEWAY_CONTRACT_ID ?? "";
+const nativeSacContractId = process.env.NEXT_PUBLIC_STELLAR_NATIVE_SAC_ID ?? "";
 
 export function ComplianceConsole() {
   const input = useComplianceStore();
   const [walletAddress, setWalletAddress] = useState<string>();
+  const [settlementMode, setSettlementMode] = useState<"authorize" | "transfer">(
+    "authorize",
+  );
   const [rotationKind, setRotationKind] = useState<"Kyc" | "Sanctions">("Kyc");
   const [rotationRoot, setRotationRoot] = useState("");
   const [rotationEpoch, setRotationEpoch] = useState(119);
@@ -105,12 +110,21 @@ export function ComplianceConsole() {
 
       const destination =
         input.destination === "demo-recipient" ? walletAddress : input.destination;
-      const assembled = await buildGatewayAuthorization({
-        contractId: gatewayContractId,
-        source: walletAddress,
-        destination,
-        authorization,
-      });
+      const assembled =
+        settlementMode === "transfer"
+          ? await buildGatewayAtomicTransfer({
+              contractId: gatewayContractId,
+              source: walletAddress,
+              destination,
+              assetContract: nativeSacContractId,
+              authorization,
+            })
+          : await buildGatewayAuthorization({
+              contractId: gatewayContractId,
+              source: walletAddress,
+              destination,
+              authorization,
+            });
       const sent = await assembled.signAndSend({
         signTransaction: signWithConnectedFreighter,
       });
@@ -439,7 +453,14 @@ export function ComplianceConsole() {
               <Separator />
               <StateRow label="Selected tier" value={`Tier ${activeTier.id}: ${activeTier.name}`} />
               <StateRow label="Settlement op" value={formatSettlement(corridor.settlement)} />
-              <StateRow label="Contract call" value="authorize_payment" />
+              <StateRow
+                label="Contract call"
+                value={
+                  settlementMode === "transfer"
+                    ? "authorize_and_transfer"
+                    : "authorize_payment"
+                }
+              />
               <StateRow
                 label="Contract"
                 value={gatewayContractId ? shortKey(gatewayContractId) : "not configured"}
@@ -447,6 +468,16 @@ export function ComplianceConsole() {
               <StateRow
                 label="Wallet"
                 value={walletAddress ? shortKey(walletAddress) : "not connected"}
+              />
+              <StateRow
+                label="SAC asset"
+                value={
+                  settlementMode === "transfer"
+                    ? nativeSacContractId
+                      ? `native ${shortKey(nativeSacContractId)}`
+                      : "not configured"
+                    : "not used"
+                }
               />
               <StateRow
                 label="Admin"
@@ -486,6 +517,20 @@ export function ComplianceConsole() {
               />
 
               <div className="grid gap-2">
+                <Select
+                  value={settlementMode}
+                  onValueChange={(value) =>
+                    setSettlementMode(value as "authorize" | "transfer")
+                  }
+                >
+                  <SelectTrigger className="h-11 rounded-md border-black/20 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="min-w-64">
+                    <SelectItem value="authorize">Authorize only</SelectItem>
+                    <SelectItem value="transfer">Atomic native SAC transfer</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="outline"
                   className="h-11 rounded-md border-black/20 bg-white"
@@ -518,7 +563,8 @@ export function ComplianceConsole() {
                     submitMutation.isPending ||
                     !authorization ||
                     !walletAddress ||
-                    !gatewayContractId
+                    !gatewayContractId ||
+                    (settlementMode === "transfer" && !nativeSacContractId)
                   }
                   onClick={() => submitMutation.mutate()}
                 >
@@ -607,7 +653,9 @@ export function ComplianceConsole() {
                   {rotateRootMutation.isPending
                     ? "Rotating compliance root"
                     : submitMutation.isPending
-                    ? "Submitting transaction"
+                    ? settlementMode === "transfer"
+                      ? "Submitting atomic transfer"
+                      : "Submitting transaction"
                     : mutation.isPending
                       ? "Preparing proof"
                       : submitMutation.data?.hash
