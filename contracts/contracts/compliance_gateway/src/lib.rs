@@ -354,6 +354,23 @@ impl ComplianceGateway {
         env.storage().persistent().get(&DataKey::Root(kind))
     }
 
+    pub fn get_root_proposal(env: Env, proposal_id: BytesN<32>) -> Option<RootProposal> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::RootProposal(proposal_id))
+    }
+
+    pub fn is_issuer(env: Env, issuer: Address) -> bool {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Issuer(issuer))
+            .unwrap_or(false)
+    }
+
+    pub fn get_issuer_threshold(env: Env) -> u32 {
+        issuer_threshold(&env)
+    }
+
     pub fn get_corridor(env: Env, code: Symbol) -> Option<Corridor> {
         env.storage().persistent().get(&DataKey::Corridor(code))
     }

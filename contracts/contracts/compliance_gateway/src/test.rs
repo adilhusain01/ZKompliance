@@ -150,10 +150,17 @@ fn rotates_roots_after_issuer_quorum() {
         &issuer_a,
     );
     assert!(!pending.executed);
+    assert_eq!(client.get_issuer_threshold(), 2);
+    assert!(client.is_issuer(&issuer_a));
+    assert_eq!(
+        client.get_root_proposal(&proposal_id).unwrap().approvals.len(),
+        1
+    );
     assert!(client.get_root(&RootKind::Kyc).is_none());
 
     let executed = client.approve_root(&proposal_id, &issuer_b);
     assert!(executed.executed);
+    assert!(client.get_root_proposal(&proposal_id).unwrap().executed);
 
     let root = client.get_root(&RootKind::Kyc).unwrap();
     assert_eq!(root.root, hash(&env, 21));

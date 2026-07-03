@@ -23,6 +23,7 @@ import {
   type Groth16Proof,
   type PaymentRequest,
   type RootKind,
+  type RootProposal,
   type RootRecord,
 } from "@/contracts/compliance_gateway/src";
 import type { GatewayAuthorization } from "@/lib/compliance/protocol";
@@ -106,6 +107,7 @@ export type GatewaySnapshot = {
   kycRoot?: RootRecord;
   sanctionsRoot?: RootRecord;
   corridor?: Corridor;
+  issuerThreshold: number;
 };
 
 export async function readGatewaySnapshot(params: {
@@ -115,11 +117,12 @@ export async function readGatewaySnapshot(params: {
   const client = getComplianceGatewayClient({
     contractId: params.contractId,
   });
-  const [admin, kycRoot, sanctionsRoot, corridor] = await Promise.all([
+  const [admin, kycRoot, sanctionsRoot, corridor, issuerThreshold] = await Promise.all([
     client.get_admin(),
     client.get_root({ kind: rootKind("Kyc") }),
     client.get_root({ kind: rootKind("Sanctions") }),
     client.get_corridor({ code: params.corridorCode ?? "USDCMXN" }),
+    client.get_issuer_threshold(),
   ]);
 
   return {
@@ -127,7 +130,42 @@ export async function readGatewaySnapshot(params: {
     kycRoot: kycRoot.result ?? undefined,
     sanctionsRoot: sanctionsRoot.result ?? undefined,
     corridor: corridor.result ?? undefined,
+    issuerThreshold: issuerThreshold.result,
   };
+}
+
+export async function readGatewayIssuerState(params: {
+  contractId: string;
+  issuer?: string;
+}) {
+  if (!params.issuer) {
+    return {
+      isIssuer: false,
+    };
+  }
+  const client = getComplianceGatewayClient({
+    contractId: params.contractId,
+  });
+  const active = await client.is_issuer({ issuer: params.issuer });
+  return {
+    isIssuer: active.result,
+  };
+}
+
+export async function readRootProposal(params: {
+  contractId: string;
+  proposalId?: string;
+}): Promise<RootProposal | undefined> {
+  if (!params.proposalId || hexWithoutPrefix(params.proposalId).length !== 64) {
+    return undefined;
+  }
+  const client = getComplianceGatewayClient({
+    contractId: params.contractId,
+  });
+  const proposal = await client.get_root_proposal({
+    proposal_id: hexToBuffer(params.proposalId),
+  });
+  return proposal.result ?? undefined;
 }
 
 export async function readGatewayIntent(params: {
@@ -214,6 +252,56 @@ export async function buildRootRotation(params: {
     epoch: params.epoch,
     issuer: params.source,
   });
+}
+
+export async function buildRootProposal(params: {
+  contractId: string;
+  source: string;
+  kind: "Kyc" | "Sanctions";
+  root: string;
+  epoch: number;
+  proposalId: string;
+}) {
+  const client = getComplianceGatewayClient({
+    contractId: params.contractId,
+    publicKey: params.source,
+  });
+  return client.propose_root({
+    proposal_id: hexToBuffer(params.proposalId),
+    kind: rootKind(params.kind),
+    root: hexToBuffer(params.root),
+    epoch: params.epoch,
+    issuer: params.source,
+  });
+}
+
+export async function buildRootApproval(params: {
+  contractId: string;
+  source: string;
+  proposalId: string;
+}) {
+  const client = getComplianceGatewayClient({
+    contractId: params.contractId,
+    publicKey: params.source,
+  });
+  return client.approve_root({
+    proposal_id: hexToBuffer(params.proposalId),
+    issuer: params.source,
+  });
+}
+
+export function rootProposalId(params: {
+  kind: "Kyc" | "Sanctions";
+  root: string;
+  epoch: number;
+}) {
+  const bytes = hexToBuffer(params.root);
+  bytes[0] = bytes[0] ^ (params.kind === "Kyc" ? 0x4b : 0x53);
+  bytes[1] = bytes[1] ^ ((params.epoch >>> 24) & 0xff);
+  bytes[2] = bytes[2] ^ ((params.epoch >>> 16) & 0xff);
+  bytes[3] = bytes[3] ^ ((params.epoch >>> 8) & 0xff);
+  bytes[4] = bytes[4] ^ (params.epoch & 0xff);
+  return `0x${bytes.toString("hex")}`;
 }
 
 export function gatewayAuthorizationToRequest(params: {

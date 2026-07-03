@@ -57,12 +57,17 @@ import { useComplianceStore } from "@/lib/compliance/store";
 import {
   buildGatewayAuthorization,
   buildGatewayAtomicTransfer,
+  buildRootApproval,
+  buildRootProposal,
   buildRootRotation,
   bufferToHex,
   connectFreighterWallet,
+  readGatewayIssuerState,
   readGatewayIntent,
   readGatewaySnapshot,
   readNullifierStatus,
+  readRootProposal,
+  rootProposalId,
   STELLAR_TESTNET,
 } from "@/lib/stellar/gateway";
 
@@ -173,6 +178,37 @@ export function ComplianceConsole() {
       }),
     enabled: Boolean(gatewayContractId && authorization?.proof.intentId),
   });
+  const rotationRootHex = rotationRoot.replace(/^0x/, "");
+  const hasValidRotationRoot = rotationRootHex.length === 64;
+  const proposalId = useMemo(
+    () =>
+      hasValidRotationRoot
+        ? rootProposalId({
+            kind: rotationKind,
+            root: rotationRoot,
+            epoch: rotationEpoch,
+          })
+        : "",
+    [hasValidRotationRoot, rotationEpoch, rotationKind, rotationRoot],
+  );
+  const issuerQuery = useQuery({
+    queryKey: ["gateway-issuer", gatewayContractId, walletAddress],
+    queryFn: () =>
+      readGatewayIssuerState({
+        contractId: gatewayContractId,
+        issuer: walletAddress,
+      }),
+    enabled: Boolean(gatewayContractId && walletAddress),
+  });
+  const proposalQuery = useQuery({
+    queryKey: ["gateway-root-proposal", gatewayContractId, proposalId],
+    queryFn: () =>
+      readRootProposal({
+        contractId: gatewayContractId,
+        proposalId,
+      }),
+    enabled: Boolean(gatewayContractId && proposalId),
+  });
   const rotateRootMutation = useMutation({
     mutationFn: async () => {
       if (!gatewayContractId) {
@@ -201,9 +237,74 @@ export function ComplianceConsole() {
       };
     },
   });
+  const proposeRootMutation = useMutation({
+    mutationFn: async () => {
+      if (!gatewayContractId) {
+        throw new Error("Set NEXT_PUBLIC_COMPLIANCE_GATEWAY_CONTRACT_ID first.");
+      }
+      if (!walletAddress) {
+        throw new Error("Connect Freighter before proposing roots.");
+      }
+      if (!hasValidRotationRoot || !proposalId) {
+        throw new Error("Enter a 32-byte root before proposing.");
+      }
+      const assembled = await buildRootProposal({
+        contractId: gatewayContractId,
+        source: walletAddress,
+        kind: rotationKind,
+        root: rotationRoot,
+        epoch: rotationEpoch,
+        proposalId,
+      });
+      const sent = await assembled.signAndSend({
+        signTransaction: signWithConnectedFreighter,
+      });
+      await Promise.all([gatewayQuery.refetch(), proposalQuery.refetch()]);
+      return {
+        hash: sent.sendTransactionResponse?.hash,
+        proposalId,
+        status:
+          sent.getTransactionResponse?.status ??
+          sent.sendTransactionResponse?.status ??
+          "submitted",
+      };
+    },
+  });
+  const approveRootMutation = useMutation({
+    mutationFn: async () => {
+      if (!gatewayContractId) {
+        throw new Error("Set NEXT_PUBLIC_COMPLIANCE_GATEWAY_CONTRACT_ID first.");
+      }
+      if (!walletAddress) {
+        throw new Error("Connect Freighter before approving roots.");
+      }
+      if (!proposalId) {
+        throw new Error("Enter the proposal root and epoch first.");
+      }
+      const assembled = await buildRootApproval({
+        contractId: gatewayContractId,
+        source: walletAddress,
+        proposalId,
+      });
+      const sent = await assembled.signAndSend({
+        signTransaction: signWithConnectedFreighter,
+      });
+      await Promise.all([gatewayQuery.refetch(), proposalQuery.refetch()]);
+      return {
+        hash: sent.sendTransactionResponse?.hash,
+        proposalId,
+        status:
+          sent.getTransactionResponse?.status ??
+          sent.sendTransactionResponse?.status ??
+          "submitted",
+      };
+    },
+  });
   const snapshot = gatewayQuery.data;
   const isOperator =
     Boolean(walletAddress && snapshot?.admin) && walletAddress === snapshot?.admin;
+  const isIssuer = issuerQuery.data?.isIssuer ?? false;
+  const issuerBadge = isOperator ? "admin wallet" : isIssuer ? "issuer wallet" : "watch mode";
   const liveKycEpoch = snapshot?.kycRoot?.epoch ?? 42;
   const liveSanctionsEpoch = snapshot?.sanctionsRoot?.epoch ?? 118;
   const routeSegments = useMemo(
@@ -582,13 +683,35 @@ export function ComplianceConsole() {
                   <p className="text-sm font-black uppercase">Issuer console</p>
                   <Badge
                     className={`rounded-md ${
-                      isOperator ? "bg-[#2dd4bf] text-black" : "bg-black text-white"
+                      isOperator || isIssuer ? "bg-[#2dd4bf] text-black" : "bg-black text-white"
                     }`}
                   >
-                    {isOperator ? "admin wallet" : "watch mode"}
+                    {issuerBadge}
                   </Badge>
                 </div>
                 <div className="grid gap-3">
+                  <div className="grid gap-2 border-b border-black/10 pb-3">
+                    <StateRow
+                      label="Threshold"
+                      value={`${proposalQuery.data?.approvals.length ?? 0}/${snapshot?.issuerThreshold ?? 1}`}
+                    />
+                    <StateRow
+                      label="Proposal"
+                      value={proposalId ? shortHex(proposalId) : "pending"}
+                    />
+                    <StateRow
+                      label="Status"
+                      value={
+                        proposalQuery.isFetching
+                          ? "checking"
+                          : proposalQuery.data?.executed
+                            ? "executed"
+                            : proposalQuery.data
+                              ? "pending"
+                              : "not found"
+                      }
+                    />
+                  </div>
                   <Select
                     value={rotationKind}
                     onValueChange={(value) =>
@@ -625,7 +748,7 @@ export function ComplianceConsole() {
                       rotateRootMutation.isPending ||
                       !walletAddress ||
                       !rotationRoot ||
-                      rotationRoot.replace(/^0x/, "").length !== 64
+                      !hasValidRotationRoot
                     }
                     onClick={() => rotateRootMutation.mutate()}
                   >
@@ -636,6 +759,46 @@ export function ComplianceConsole() {
                     )}
                     Rotate root
                   </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      className="h-10 rounded-md border-black/20 bg-white"
+                      disabled={
+                        proposeRootMutation.isPending ||
+                        !walletAddress ||
+                        !hasValidRotationRoot ||
+                        !isIssuer
+                      }
+                      onClick={() => proposeRootMutation.mutate()}
+                    >
+                      {proposeRootMutation.isPending ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <KeyRound className="size-4" />
+                      )}
+                      Propose
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-10 rounded-md border-black/20 bg-white"
+                      disabled={
+                        approveRootMutation.isPending ||
+                        !walletAddress ||
+                        !proposalId ||
+                        !isIssuer ||
+                        !proposalQuery.data ||
+                        proposalQuery.data.executed
+                      }
+                      onClick={() => approveRootMutation.mutate()}
+                    >
+                      {approveRootMutation.isPending ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <BadgeCheck className="size-4" />
+                      )}
+                      Approve
+                    </Button>
+                  </div>
                 </div>
               </div>
 
@@ -652,6 +815,10 @@ export function ComplianceConsole() {
                   )}
                   {rotateRootMutation.isPending
                     ? "Rotating compliance root"
+                    : proposeRootMutation.isPending
+                      ? "Proposing compliance root"
+                      : approveRootMutation.isPending
+                        ? "Approving compliance root"
                     : submitMutation.isPending
                     ? settlementMode === "transfer"
                       ? "Submitting atomic transfer"
@@ -669,7 +836,22 @@ export function ComplianceConsole() {
                   <HashLine label="nullifier" value={authorization?.proof.nullifier} />
                   <HashLine label="proof" value={authorization?.proof.proofHash} />
                   <HashLine label="tx" value={submitMutation.data?.hash} />
-                  <HashLine label="root tx" value={rotateRootMutation.data?.hash} />
+                  <HashLine
+                    label="root tx"
+                    value={
+                      rotateRootMutation.data?.hash ??
+                      proposeRootMutation.data?.hash ??
+                      approveRootMutation.data?.hash
+                    }
+                  />
+                  <HashLine
+                    label="proposal"
+                    value={
+                      proposeRootMutation.data?.proposalId ??
+                      approveRootMutation.data?.proposalId ??
+                      proposalId
+                    }
+                  />
                 </div>
                 {submitMutation.data?.hash ? (
                   <a
@@ -687,10 +869,22 @@ export function ComplianceConsole() {
               connectMutation.error ||
               submitMutation.error ||
               rotateRootMutation.error ||
+              proposeRootMutation.error ||
+              approveRootMutation.error ||
+              issuerQuery.error ||
+              proposalQuery.error ||
               gatewayQuery.error ? (
                 <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm font-semibold text-destructive">
                   {rotateRootMutation.error instanceof Error
                     ? rotateRootMutation.error.message
+                    : proposeRootMutation.error instanceof Error
+                      ? proposeRootMutation.error.message
+                      : approveRootMutation.error instanceof Error
+                        ? approveRootMutation.error.message
+                        : issuerQuery.error instanceof Error
+                          ? issuerQuery.error.message
+                          : proposalQuery.error instanceof Error
+                            ? proposalQuery.error.message
                     : gatewayQuery.error instanceof Error
                       ? gatewayQuery.error.message
                       : submitMutation.error instanceof Error

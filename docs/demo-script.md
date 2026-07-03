@@ -25,7 +25,7 @@ ZK Compliance Gateway lets an autonomous payment agent prove KYC, sanctions, and
 ## Testnet Deployment
 
 ```text
-contract: CAVNJJEORHARTAAKWB77DJK6I3TVJWH2MYVDCGBO7DZZTWQQ5QLWGSE6
+contract: CCNX22JKOQ2SITUZMBVPFDBUO6W6NRN2VGMBB6A4VLETHJUF4RCQYVGP
 admin:    GABMPCECAIYWFD5NN5QH4TBEMYZDPIU3NDEFKWGMG364R7BBXP46BY5H
 network:  Test SDF Network ; September 2015
 ```
@@ -51,4 +51,4 @@ Stellar already has the corridor, anchor, and regulated asset concepts this proj
 ## Next Protocol Steps
 
 - Add regulated asset issuance/minting around non-native Testnet demo assets.
-- Add quorum proposal and approval flows for multi-issuer root governance.
+- Add a multi-wallet judge script for two-issuer quorum execution.

@@ -152,6 +152,11 @@ export interface Client {
   get_admin: (options?: MethodOptions) => Promise<AssembledTransaction<string>>
 
   /**
+   * Construct and simulate a is_issuer transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  is_issuer: ({issuer}: {issuer: string}, options?: MethodOptions) => Promise<AssembledTransaction<boolean>>
+
+  /**
    * Construct and simulate a get_intent transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   get_intent: ({intent_id}: {intent_id: Buffer}, options?: MethodOptions) => Promise<AssembledTransaction<Option<PaymentIntent>>>
@@ -192,6 +197,11 @@ export interface Client {
   authorize_payment: ({request}: {request: PaymentRequest}, options?: MethodOptions) => Promise<AssembledTransaction<PaymentIntent>>
 
   /**
+   * Construct and simulate a get_root_proposal transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_root_proposal: ({proposal_id}: {proposal_id: Buffer}, options?: MethodOptions) => Promise<AssembledTransaction<Option<RootProposal>>>
+
+  /**
    * Construct and simulate a is_nullifier_used transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   is_nullifier_used: ({nullifier}: {nullifier: Buffer}, options?: MethodOptions) => Promise<AssembledTransaction<boolean>>
@@ -200,6 +210,11 @@ export interface Client {
    * Construct and simulate a record_settlement transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   record_settlement: ({intent_id, settlement_tx}: {intent_id: Buffer, settlement_tx: Buffer}, options?: MethodOptions) => Promise<AssembledTransaction<PaymentIntent>>
+
+  /**
+   * Construct and simulate a get_issuer_threshold transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  get_issuer_threshold: (options?: MethodOptions) => Promise<AssembledTransaction<u32>>
 
   /**
    * Construct and simulate a set_issuer_threshold transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -247,6 +262,7 @@ export class Client extends ContractClient {
         "AAAAAQAAAAAAAAAAAAAAElBheW1lbnRTZXR0bGVkRGF0YQAAAAAAAgAAAAAAAAAJaW50ZW50X2lkAAAAAAAD7gAAACAAAAAAAAAADXNldHRsZW1lbnRfdHgAAAAAAAPuAAAAIA==",
         "AAAAAAAAAAAAAAAIZ2V0X3Jvb3QAAAABAAAAAAAAAARraW5kAAAH0AAAAAhSb290S2luZAAAAAEAAAPoAAAH0AAAAApSb290UmVjb3JkAAA=",
         "AAAAAAAAAAAAAAAJZ2V0X2FkbWluAAAAAAAAAAAAAAEAAAAT",
+        "AAAAAAAAAAAAAAAJaXNfaXNzdWVyAAAAAAAAAQAAAAAAAAAGaXNzdWVyAAAAAAATAAAAAQAAAAE=",
         "AAAAAAAAAAAAAAAKZ2V0X2ludGVudAAAAAAAAQAAAAAAAAAJaW50ZW50X2lkAAAAAAAD7gAAACAAAAABAAAD6AAAB9AAAAANUGF5bWVudEludGVudAAAAA==",
         "AAAAAAAAAAAAAAAKc2V0X2lzc3VlcgAAAAAAAgAAAAAAAAAGaXNzdWVyAAAAAAATAAAAAAAAAAZhY3RpdmUAAAAAAAEAAAAA",
         "AAAAAQAAAAAAAAAAAAAAFVBheW1lbnRBdXRob3JpemVkRGF0YQAAAAAAAAQAAAAAAAAABmFtb3VudAAAAAAACwAAAAAAAAAIY29ycmlkb3IAAAARAAAAAAAAAAlpbnRlbnRfaWQAAAAAAAPuAAAAIAAAAAAAAAAKcHJvb2ZfdGllcgAAAAAABA==",
@@ -256,8 +272,10 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAAMcHJvcG9zZV9yb290AAAABQAAAAAAAAALcHJvcG9zYWxfaWQAAAAD7gAAACAAAAAAAAAABGtpbmQAAAfQAAAACFJvb3RLaW5kAAAAAAAAAARyb290AAAD7gAAACAAAAAAAAAABWVwb2NoAAAAAAAABAAAAAAAAAAGaXNzdWVyAAAAAAATAAAAAQAAB9AAAAAMUm9vdFByb3Bvc2Fs",
         "AAAAAAAAAAAAAAAMc2V0X2NvcnJpZG9yAAAABQAAAAAAAAAEY29kZQAAABEAAAAAAAAABWFzc2V0AAAAAAAAEQAAAAAAAAAFbGltaXQAAAAAAAALAAAAAAAAAA5taW5fcHJvb2ZfdGllcgAAAAAABAAAAAAAAAAGYWN0aXZlAAAAAAABAAAAAQAAB9AAAAAIQ29ycmlkb3I=",
         "AAAAAAAAAAAAAAARYXV0aG9yaXplX3BheW1lbnQAAAAAAAABAAAAAAAAAAdyZXF1ZXN0AAAAB9AAAAAOUGF5bWVudFJlcXVlc3QAAAAAAAEAAAfQAAAADVBheW1lbnRJbnRlbnQAAAA=",
+        "AAAAAAAAAAAAAAARZ2V0X3Jvb3RfcHJvcG9zYWwAAAAAAAABAAAAAAAAAAtwcm9wb3NhbF9pZAAAAAPuAAAAIAAAAAEAAAPoAAAH0AAAAAxSb290UHJvcG9zYWw=",
         "AAAAAAAAAAAAAAARaXNfbnVsbGlmaWVyX3VzZWQAAAAAAAABAAAAAAAAAAludWxsaWZpZXIAAAAAAAPuAAAAIAAAAAEAAAAB",
         "AAAAAAAAAAAAAAARcmVjb3JkX3NldHRsZW1lbnQAAAAAAAACAAAAAAAAAAlpbnRlbnRfaWQAAAAAAAPuAAAAIAAAAAAAAAANc2V0dGxlbWVudF90eAAAAAAAA+4AAAAgAAAAAQAAB9AAAAANUGF5bWVudEludGVudAAAAA==",
+        "AAAAAAAAAAAAAAAUZ2V0X2lzc3Vlcl90aHJlc2hvbGQAAAAAAAAAAQAAAAQ=",
         "AAAAAAAAAAAAAAAUc2V0X2lzc3Vlcl90aHJlc2hvbGQAAAABAAAAAAAAAAl0aHJlc2hvbGQAAAAAAAAEAAAAAA==",
         "AAAAAAAAAAAAAAAWYXV0aG9yaXplX2FuZF90cmFuc2ZlcgAAAAAAAwAAAAAAAAAHcmVxdWVzdAAAAAfQAAAADlBheW1lbnRSZXF1ZXN0AAAAAAAAAAAADmFzc2V0X2NvbnRyYWN0AAAAAAATAAAAAAAAAAZzb3VyY2UAAAAAABMAAAABAAAH0AAAAA1QYXltZW50SW50ZW50AAAA" ]),
       options
@@ -267,6 +285,7 @@ export class Client extends ContractClient {
     init: this.txFromJSON<null>,
         get_root: this.txFromJSON<Option<RootRecord>>,
         get_admin: this.txFromJSON<string>,
+        is_issuer: this.txFromJSON<boolean>,
         get_intent: this.txFromJSON<Option<PaymentIntent>>,
         set_issuer: this.txFromJSON<null>,
         rotate_root: this.txFromJSON<RootRecord>,
@@ -275,8 +294,10 @@ export class Client extends ContractClient {
         propose_root: this.txFromJSON<RootProposal>,
         set_corridor: this.txFromJSON<Corridor>,
         authorize_payment: this.txFromJSON<PaymentIntent>,
+        get_root_proposal: this.txFromJSON<Option<RootProposal>>,
         is_nullifier_used: this.txFromJSON<boolean>,
         record_settlement: this.txFromJSON<PaymentIntent>,
+        get_issuer_threshold: this.txFromJSON<u32>,
         set_issuer_threshold: this.txFromJSON<null>,
         authorize_and_transfer: this.txFromJSON<PaymentIntent>
   }

@@ -41,6 +41,7 @@ statements:
 - `compliance_gateway` Soroban contract with:
   - admin initialization;
   - issuer allowlist and quorum root governance;
+  - proposal/approval read APIs for issuer governance dashboards;
   - KYC and sanctions root rotation;
   - corridor policy and proof-tier gating;
   - nullifier replay protection;
@@ -133,7 +134,7 @@ CONTRACT_ID=your-contract-id STELLAR_ACCOUNT=your-funded-cli-identity npm run bo
 Current Testnet deployment:
 
 ```text
-contract: CAVNJJEORHARTAAKWB77DJK6I3TVJWH2MYVDCGBO7DZZTWQQ5QLWGSE6
+contract: CCNX22JKOQ2SITUZMBVPFDBUO6W6NRN2VGMBB6A4VLETHJUF4RCQYVGP
 admin:    GABMPCECAIYWFD5NN5QH4TBEMYZDPIU3NDEFKWGMG364R7BBXP46BY5H
 network:  Test SDF Network ; September 2015
 ```
@@ -174,4 +175,4 @@ scripts/bootstrap-testnet.sh
 ## Remaining Real Work
 
 - Add regulated asset issuance/minting around non-native Testnet demo assets.
-- Add quorum proposal/approval UI for multi-issuer root governance.
+- Add multi-wallet judge script for two-issuer quorum execution.

@@ -11,6 +11,8 @@ STELLAR_RPC_URL="${STELLAR_RPC_URL:-https://soroban-testnet.stellar.org}"
 STELLAR_NETWORK_PASSPHRASE="${STELLAR_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}"
 
 ADMIN_ADDRESS="${ADMIN_ADDRESS:-$(stellar keys address "$STELLAR_ACCOUNT")}"
+ISSUER_THRESHOLD="${ISSUER_THRESHOLD:-1}"
+ADDITIONAL_ISSUERS="${ADDITIONAL_ISSUERS:-}"
 read -r KYC_ROOT SANCTIONS_ROOT < <(
   cd "$ROOT_DIR"
   npx tsx -e "import { defaultRoots } from './src/lib/compliance/protocol'; console.log(defaultRoots.kycRoot.replace(/^0x/, ''), defaultRoots.sanctionsRoot.replace(/^0x/, ''));"
@@ -26,6 +28,22 @@ stellar_args=(
 
 stellar contract invoke "${stellar_args[@]}" -- init \
   --admin "$ADMIN_ADDRESS"
+
+stellar contract invoke "${stellar_args[@]}" -- set_issuer \
+  --issuer "$ADMIN_ADDRESS" \
+  --active true
+
+if [[ -n "$ADDITIONAL_ISSUERS" ]]; then
+  IFS=',' read -ra issuer_addresses <<< "$ADDITIONAL_ISSUERS"
+  for issuer_address in "${issuer_addresses[@]}"; do
+    stellar contract invoke "${stellar_args[@]}" -- set_issuer \
+      --issuer "$issuer_address" \
+      --active true
+  done
+fi
+
+stellar contract invoke "${stellar_args[@]}" -- set_issuer_threshold \
+  --threshold "$ISSUER_THRESHOLD"
 
 stellar contract invoke "${stellar_args[@]}" -- rotate_root \
   --kind Kyc \
