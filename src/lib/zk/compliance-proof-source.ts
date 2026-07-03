@@ -16,8 +16,8 @@ def main(
   field senderCommitment,
   field receiverCommitment,
   field nullifier,
-  u32 amount,
-  u32 corridorLimit
+  u64 amount,
+  u64 corridorLimit
 ) -> bool {
   field mut computedKycRoot = 0;
   field mut computedSanctionsRoot = 0;

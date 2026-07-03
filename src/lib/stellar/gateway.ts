@@ -19,6 +19,7 @@ import {
 } from "@stellar/freighter-api";
 import {
   Client as ComplianceGatewayClient,
+  type Groth16Proof,
   type PaymentRequest,
 } from "@/contracts/compliance_gateway/src";
 import type { GatewayAuthorization } from "@/lib/compliance/protocol";
@@ -152,7 +153,38 @@ export function gatewayAuthorizationToRequest(params: {
     proof_hash: hexToBuffer(proof.proofHash),
     proof_inputs_hash: hexToBuffer(proof.proofInputsHash),
     proof_tier: proof.proofTier,
+    zk_proof: proofPayloadToContractProof(proof.proof),
   };
+}
+
+function proofPayloadToContractProof(
+  payload: GatewayAuthorization["proof"]["proof"],
+): Groth16Proof {
+  const proof = payload.proof.proof as {
+    a: [string, string];
+    b: [[string, string], [string, string]];
+    c: [string, string];
+  };
+
+  return {
+    a: g1ToBuffer(proof.a),
+    b: g2ToBuffer(proof.b),
+    c: g1ToBuffer(proof.c),
+    inputs: payload.proof.inputs.map(hexToBuffer),
+  };
+}
+
+function g1ToBuffer(point: [string, string]) {
+  return Buffer.concat([hexToBuffer(point[0]), hexToBuffer(point[1])]);
+}
+
+function g2ToBuffer(point: [[string, string], [string, string]]) {
+  return Buffer.concat([
+    hexToBuffer(point[0][1]),
+    hexToBuffer(point[0][0]),
+    hexToBuffer(point[1][1]),
+    hexToBuffer(point[1][0]),
+  ]);
 }
 
 function hexToBuffer(hex: string) {

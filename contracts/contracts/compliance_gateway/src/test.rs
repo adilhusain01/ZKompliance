@@ -18,30 +18,24 @@ fn client(env: &Env) -> (Address, ComplianceGatewayClient<'_>) {
 }
 
 fn configure_gateway(env: &Env, client: &ComplianceGatewayClient<'_>, admin: &Address) {
-    client.rotate_root(&RootKind::Kyc, &hash(env, 11), &1, admin);
-    client.rotate_root(&RootKind::Sanctions, &hash(env, 12), &1, admin);
+    client.rotate_root(&RootKind::Kyc, &proof_fixture::kyc_root(env), &1, admin);
+    client.rotate_root(
+        &RootKind::Sanctions,
+        &proof_fixture::sanctions_root(env),
+        &1,
+        admin,
+    );
     client.set_corridor(
         &symbol_short!("USDCMXN"),
         &symbol_short!("USDC"),
-        &500_0000000,
+        &5_000_0000000,
         &2,
         &true,
     );
 }
 
 fn payment_request(env: &Env, destination: Address) -> PaymentRequest {
-    PaymentRequest {
-        intent_id: hash(env, 1),
-        nullifier: hash(env, 2),
-        corridor: symbol_short!("USDCMXN"),
-        sender_commitment: hash(env, 3),
-        receiver_commitment: hash(env, 4),
-        destination,
-        amount: 125_0000000,
-        proof_hash: hash(env, 5),
-        proof_inputs_hash: hash(env, 6),
-        proof_tier: 2,
-    }
+    proof_fixture::valid_request(env, destination)
 }
 
 #[test]
@@ -54,8 +48,8 @@ fn authorizes_payment_and_records_settlement() {
     let intent = client.authorize_payment(&request);
 
     assert_eq!(intent.amount, request.amount);
-    assert_eq!(intent.kyc_root, hash(&env, 11));
-    assert_eq!(intent.sanctions_root, hash(&env, 12));
+    assert_eq!(intent.kyc_root, proof_fixture::kyc_root(&env));
+    assert_eq!(intent.sanctions_root, proof_fixture::sanctions_root(&env));
     assert!(!intent.settled);
     assert!(client.is_nullifier_used(&request.nullifier));
 
@@ -75,13 +69,14 @@ fn authorizes_and_transfers_token_atomically() {
     let asset = env.register_stellar_asset_contract_v2(admin);
     let token_admin = token::StellarAssetClient::new(&env, &asset.address());
     let token_client = token::Client::new(&env, &asset.address());
-    token_admin.mint(&source, &1_000_0000000);
+    let starting_balance = 100_000_0000000;
+    token_admin.mint(&source, &starting_balance);
 
     let request = payment_request(&env, destination.clone());
     let intent = client.authorize_and_transfer(&request, &asset.address(), &source);
 
     assert!(intent.settled);
-    assert_eq!(token_client.balance(&source), 875_0000000);
+    assert_eq!(token_client.balance(&source), starting_balance - request.amount);
     assert_eq!(token_client.balance(&destination), request.amount);
     assert!(client.is_nullifier_used(&request.nullifier));
 }
@@ -119,7 +114,19 @@ fn rejects_over_limit_amounts() {
     configure_gateway(&env, &client, &admin);
 
     let mut request = payment_request(&env, Address::generate(&env));
-    request.amount = 501_0000000;
+    request.amount = 5_001_0000000;
+    client.authorize_payment(&request);
+}
+
+#[test]
+#[should_panic]
+fn rejects_requests_that_do_not_match_proof_inputs() {
+    let env = Env::default();
+    let (admin, client) = client(&env);
+    configure_gateway(&env, &client, &admin);
+
+    let mut request = payment_request(&env, Address::generate(&env));
+    request.sender_commitment = hash(&env, 99);
     client.authorize_payment(&request);
 }
 

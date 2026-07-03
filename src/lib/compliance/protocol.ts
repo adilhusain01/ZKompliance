@@ -245,7 +245,7 @@ function dayWindow() {
 }
 
 function toMinorUnits(amount: number) {
-  return Math.round(amount * 100);
+  return Math.round(amount * 10_000_000);
 }
 
 async function digestHex(value: string) {

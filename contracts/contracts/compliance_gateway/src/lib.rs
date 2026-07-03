@@ -4,6 +4,8 @@ use soroban_sdk::{
     contract, contractevent, contractimpl, contracttype, token, Address, BytesN, Env, Symbol, Vec,
 };
 
+mod verifier;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RootKind {
@@ -59,6 +61,16 @@ pub struct PaymentRequest {
     pub proof_hash: BytesN<32>,
     pub proof_inputs_hash: BytesN<32>,
     pub proof_tier: u32,
+    pub zk_proof: Groth16Proof,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Groth16Proof {
+    pub a: BytesN<64>,
+    pub b: BytesN<128>,
+    pub c: BytesN<64>,
+    pub inputs: Vec<BytesN<32>>,
 }
 
 #[contracttype]
@@ -380,6 +392,7 @@ fn authorize_request(env: &Env, request: PaymentRequest) -> PaymentIntent {
 
         let kyc_root = get_root_or_panic(&env, RootKind::Kyc).root;
         let sanctions_root = get_root_or_panic(&env, RootKind::Sanctions).root;
+        verify_request_proof(env, &request, &corridor, &kyc_root, &sanctions_root);
 
         let intent = PaymentIntent {
             corridor: request.corridor,
@@ -486,5 +499,55 @@ fn get_corridor_or_panic(env: &Env, code: Symbol) -> Corridor {
         .get(&DataKey::Corridor(code))
         .unwrap_or_else(|| panic!("corridor not configured"))
 }
+
+fn verify_request_proof(
+    env: &Env,
+    request: &PaymentRequest,
+    corridor: &Corridor,
+    kyc_root: &BytesN<32>,
+    sanctions_root: &BytesN<32>,
+) {
+    if request.zk_proof.inputs.len() != verifier::PUBLIC_INPUT_COUNT {
+        panic!("invalid proof inputs");
+    }
+    assert_input(&request.zk_proof, 0, kyc_root);
+    assert_input(&request.zk_proof, 1, sanctions_root);
+    assert_input(&request.zk_proof, 2, &request.sender_commitment);
+    assert_input(&request.zk_proof, 3, &request.receiver_commitment);
+    assert_input(&request.zk_proof, 4, &request.nullifier);
+    assert_input(&request.zk_proof, 5, &i128_to_field_bytes(env, request.amount));
+    assert_input(&request.zk_proof, 6, &i128_to_field_bytes(env, corridor.limit));
+    assert_input(&request.zk_proof, 7, &u32_to_field_bytes(env, 1));
+
+    if !verifier::verify_compliance_proof(env, &request.zk_proof) {
+        panic!("proof verification failed");
+    }
+}
+
+fn assert_input(proof: &Groth16Proof, index: u32, expected: &BytesN<32>) {
+    let actual = proof.inputs.get(index).unwrap();
+    if actual != *expected {
+        panic!("proof input mismatch");
+    }
+}
+
+fn i128_to_field_bytes(env: &Env, value: i128) -> BytesN<32> {
+    if value < 0 {
+        panic!("negative field value");
+    }
+    let mut bytes = [0u8; 32];
+    let value_bytes = value.to_be_bytes();
+    bytes[16..].copy_from_slice(&value_bytes);
+    BytesN::from_array(env, &bytes)
+}
+
+fn u32_to_field_bytes(env: &Env, value: u32) -> BytesN<32> {
+    let mut bytes = [0u8; 32];
+    bytes[28..].copy_from_slice(&value.to_be_bytes());
+    BytesN::from_array(env, &bytes)
+}
+
+#[cfg(test)]
+mod proof_fixture;
 
 mod test;
