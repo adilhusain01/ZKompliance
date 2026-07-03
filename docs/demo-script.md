@@ -36,7 +36,6 @@ Stellar already has the corridor, anchor, and regulated asset concepts this proj
 
 ## Next Protocol Steps
 
-- Replace fixed demo allowlists with issuer-operated root rotation dashboards.
-- Add live contract state readback to the app.
 - Add a second corridor and demonstrate routing-agent proof-tier selection.
 - Extend `authorize_and_transfer` to a Testnet Stellar Asset Contract demo asset.
+- Add quorum proposal and approval flows for multi-issuer root governance.

@@ -19,8 +19,11 @@ import {
 } from "@stellar/freighter-api";
 import {
   Client as ComplianceGatewayClient,
+  type Corridor,
   type Groth16Proof,
   type PaymentRequest,
+  type RootKind,
+  type RootRecord,
 } from "@/contracts/compliance_gateway/src";
 import type { GatewayAuthorization } from "@/lib/compliance/protocol";
 
@@ -88,7 +91,7 @@ export async function submitHorizonXdr(signedXdr: string) {
 
 export function getComplianceGatewayClient(params: {
   contractId: string;
-  publicKey: string;
+  publicKey?: string;
 }) {
   return new ComplianceGatewayClient({
     contractId: params.contractId,
@@ -96,6 +99,63 @@ export function getComplianceGatewayClient(params: {
     networkPassphrase: STELLAR_TESTNET.networkPassphrase,
     rpcUrl: STELLAR_TESTNET.rpcUrl,
   });
+}
+
+export type GatewaySnapshot = {
+  admin: string;
+  kycRoot?: RootRecord;
+  sanctionsRoot?: RootRecord;
+  corridor?: Corridor;
+};
+
+export async function readGatewaySnapshot(params: {
+  contractId: string;
+  corridorCode?: string;
+}): Promise<GatewaySnapshot> {
+  const client = getComplianceGatewayClient({
+    contractId: params.contractId,
+  });
+  const [admin, kycRoot, sanctionsRoot, corridor] = await Promise.all([
+    client.get_admin(),
+    client.get_root({ kind: rootKind("Kyc") }),
+    client.get_root({ kind: rootKind("Sanctions") }),
+    client.get_corridor({ code: params.corridorCode ?? "USDCMXN" }),
+  ]);
+
+  return {
+    admin: admin.result,
+    kycRoot: kycRoot.result ?? undefined,
+    sanctionsRoot: sanctionsRoot.result ?? undefined,
+    corridor: corridor.result ?? undefined,
+  };
+}
+
+export async function readGatewayIntent(params: {
+  contractId: string;
+  intentId?: string;
+}) {
+  if (!params.intentId) return undefined;
+  const client = getComplianceGatewayClient({
+    contractId: params.contractId,
+  });
+  const intent = await client.get_intent({
+    intent_id: hexToBuffer(params.intentId),
+  });
+  return intent.result ?? undefined;
+}
+
+export async function readNullifierStatus(params: {
+  contractId: string;
+  nullifier?: string;
+}) {
+  if (!params.nullifier) return false;
+  const client = getComplianceGatewayClient({
+    contractId: params.contractId,
+  });
+  const status = await client.is_nullifier_used({
+    nullifier: hexToBuffer(params.nullifier),
+  });
+  return status.result;
 }
 
 export async function buildGatewayAuthorization(params: {
@@ -134,6 +194,25 @@ export async function buildGatewayAtomicTransfer(params: {
     request,
     asset_contract: params.assetContract,
     source: params.source,
+  });
+}
+
+export async function buildRootRotation(params: {
+  contractId: string;
+  source: string;
+  kind: "Kyc" | "Sanctions";
+  root: string;
+  epoch: number;
+}) {
+  const client = getComplianceGatewayClient({
+    contractId: params.contractId,
+    publicKey: params.source,
+  });
+  return client.rotate_root({
+    kind: rootKind(params.kind),
+    root: hexToBuffer(params.root),
+    epoch: params.epoch,
+    issuer: params.source,
   });
 }
 
@@ -187,10 +266,18 @@ function g2ToBuffer(point: [[string, string], [string, string]]) {
   ]);
 }
 
-function hexToBuffer(hex: string) {
+export function bufferToHex(buffer?: Buffer) {
+  return buffer ? `0x${Buffer.from(buffer).toString("hex")}` : undefined;
+}
+
+export function hexToBuffer(hex: string) {
   return Buffer.from(hexWithoutPrefix(hex).padStart(64, "0"), "hex");
 }
 
 function hexWithoutPrefix(hex: string) {
   return hex.replace(/^0x/, "");
+}
+
+function rootKind(tag: "Kyc" | "Sanctions"): RootKind {
+  return { tag, values: undefined };
 }

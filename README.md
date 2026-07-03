@@ -158,5 +158,6 @@ scripts/bootstrap-testnet.sh
 
 ## Remaining Real Work
 
-- Add live Testnet state readback for roots, corridors, nullifiers, and intents.
-- Add issuer/operator dashboards for rotating KYC and sanctions roots.
+- Add a second deployed corridor and demonstrate routing-agent proof-tier selection.
+- Extend `authorize_and_transfer` to a Testnet Stellar Asset Contract demo asset.
+- Add quorum proposal/approval UI for multi-issuer root governance.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { signTransaction as freighterSignTransaction } from "@stellar/freighter-api";
 import {
   ArrowRight,
@@ -19,6 +19,7 @@ import {
   Network,
   Play,
   RefreshCcw,
+  RotateCw,
   Route,
   Send,
   ShieldCheck,
@@ -55,7 +56,12 @@ import {
 import { useComplianceStore } from "@/lib/compliance/store";
 import {
   buildGatewayAuthorization,
+  buildRootRotation,
+  bufferToHex,
   connectFreighterWallet,
+  readGatewayIntent,
+  readGatewaySnapshot,
+  readNullifierStatus,
   STELLAR_TESTNET,
 } from "@/lib/stellar/gateway";
 
@@ -65,6 +71,9 @@ const gatewayContractId =
 export function ComplianceConsole() {
   const input = useComplianceStore();
   const [walletAddress, setWalletAddress] = useState<string>();
+  const [rotationKind, setRotationKind] = useState<"Kyc" | "Sanctions">("Kyc");
+  const [rotationRoot, setRotationRoot] = useState("");
+  const [rotationEpoch, setRotationEpoch] = useState(119);
   const corridor = selectCorridor(input.corridor);
   const selectedTier = selectProofTier(input);
   const limitUsed = Math.min(100, Math.round((input.amount / corridor.limit) * 100));
@@ -103,18 +112,7 @@ export function ComplianceConsole() {
         authorization,
       });
       const sent = await assembled.signAndSend({
-        signTransaction: async (xdr, opts) => {
-          const signed = await freighterSignTransaction(xdr, {
-            address: opts?.address,
-            networkPassphrase:
-              opts?.networkPassphrase ?? STELLAR_TESTNET.networkPassphrase,
-          });
-          if (signed.error) throw new Error(signed.error.message);
-          return {
-            signedTxXdr: signed.signedTxXdr,
-            signerAddress: signed.signerAddress,
-          };
-        },
+        signTransaction: signWithConnectedFreighter,
       });
 
       return {
@@ -128,6 +126,72 @@ export function ComplianceConsole() {
   });
 
   const authorization = mutation.data;
+  const liveCorridorCode = corridor.code.replace("-", "");
+  const gatewayQuery = useQuery({
+    queryKey: ["gateway-snapshot", gatewayContractId, liveCorridorCode],
+    queryFn: () =>
+      readGatewaySnapshot({
+        contractId: gatewayContractId,
+        corridorCode: liveCorridorCode,
+      }),
+    enabled: Boolean(gatewayContractId),
+    refetchInterval: 30_000,
+  });
+  const nullifierQuery = useQuery({
+    queryKey: [
+      "gateway-nullifier",
+      gatewayContractId,
+      authorization?.proof.nullifier,
+    ],
+    queryFn: () =>
+      readNullifierStatus({
+        contractId: gatewayContractId,
+        nullifier: authorization?.proof.nullifier,
+      }),
+    enabled: Boolean(gatewayContractId && authorization?.proof.nullifier),
+  });
+  const intentQuery = useQuery({
+    queryKey: ["gateway-intent", gatewayContractId, authorization?.proof.intentId],
+    queryFn: () =>
+      readGatewayIntent({
+        contractId: gatewayContractId,
+        intentId: authorization?.proof.intentId,
+      }),
+    enabled: Boolean(gatewayContractId && authorization?.proof.intentId),
+  });
+  const rotateRootMutation = useMutation({
+    mutationFn: async () => {
+      if (!gatewayContractId) {
+        throw new Error("Set NEXT_PUBLIC_COMPLIANCE_GATEWAY_CONTRACT_ID first.");
+      }
+      if (!walletAddress) {
+        throw new Error("Connect Freighter before rotating roots.");
+      }
+      const assembled = await buildRootRotation({
+        contractId: gatewayContractId,
+        source: walletAddress,
+        kind: rotationKind,
+        root: rotationRoot,
+        epoch: rotationEpoch,
+      });
+      const sent = await assembled.signAndSend({
+        signTransaction: signWithConnectedFreighter,
+      });
+      await gatewayQuery.refetch();
+      return {
+        hash: sent.sendTransactionResponse?.hash,
+        status:
+          sent.getTransactionResponse?.status ??
+          sent.sendTransactionResponse?.status ??
+          "submitted",
+      };
+    },
+  });
+  const snapshot = gatewayQuery.data;
+  const isOperator =
+    Boolean(walletAddress && snapshot?.admin) && walletAddress === snapshot?.admin;
+  const liveKycEpoch = snapshot?.kycRoot?.epoch ?? 42;
+  const liveSanctionsEpoch = snapshot?.sanctionsRoot?.epoch ?? 118;
   const routeSegments = useMemo(
     () => [
       {
@@ -167,13 +231,13 @@ export function ComplianceConsole() {
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2 text-xs font-bold sm:flex">
-            <StatusPill icon={Database} label="KYC root" value="epoch 42" />
-            <StatusPill icon={Ban} label="Sanctions root" value="epoch 118" />
+            <StatusPill icon={Database} label="KYC root" value={`epoch ${liveKycEpoch}`} />
+            <StatusPill icon={Ban} label="Sanctions root" value={`epoch ${liveSanctionsEpoch}`} />
             <StatusPill icon={Network} label="Network" value="testnet" />
           </div>
         </header>
 
-        <section className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)_360px]">
+        <section className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)_360px] xl:items-start">
           <Card className="rounded-lg border-black/20 bg-card/95 shadow-none">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base uppercase">
@@ -384,8 +448,57 @@ export function ComplianceConsole() {
                 label="Wallet"
                 value={walletAddress ? shortKey(walletAddress) : "not connected"}
               />
+              <StateRow
+                label="Admin"
+                value={snapshot?.admin ? shortKey(snapshot.admin) : gatewayQuery.isPending ? "loading" : "unavailable"}
+              />
+              <StateRow
+                label="KYC root"
+                value={shortHex(bufferToHex(snapshot?.kycRoot?.root))}
+              />
+              <StateRow
+                label="Sanctions"
+                value={shortHex(bufferToHex(snapshot?.sanctionsRoot?.root))}
+              />
+              <StateRow
+                label="Nullifier"
+                value={
+                  authorization
+                    ? nullifierQuery.isPending
+                      ? "checking"
+                      : nullifierQuery.data
+                        ? "used"
+                        : "unused"
+                    : "pending"
+                }
+              />
+              <StateRow
+                label="Intent"
+                value={
+                  authorization
+                    ? intentQuery.isPending
+                      ? "checking"
+                      : intentQuery.data
+                        ? "recorded"
+                        : "not recorded"
+                    : "pending"
+                }
+              />
 
               <div className="grid gap-2">
+                <Button
+                  variant="outline"
+                  className="h-11 rounded-md border-black/20 bg-white"
+                  disabled={gatewayQuery.isFetching || !gatewayContractId}
+                  onClick={() => gatewayQuery.refetch()}
+                >
+                  {gatewayQuery.isFetching ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <RotateCw className="size-4" />
+                  )}
+                  Refresh contract state
+                </Button>
                 <Button
                   variant="outline"
                   className="h-11 rounded-md border-black/20 bg-white"
@@ -418,6 +531,68 @@ export function ComplianceConsole() {
                 </Button>
               </div>
 
+              <div className="rounded-md border border-black/15 bg-white/70 p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-black uppercase">Issuer console</p>
+                  <Badge
+                    className={`rounded-md ${
+                      isOperator ? "bg-[#2dd4bf] text-black" : "bg-black text-white"
+                    }`}
+                  >
+                    {isOperator ? "admin wallet" : "watch mode"}
+                  </Badge>
+                </div>
+                <div className="grid gap-3">
+                  <Select
+                    value={rotationKind}
+                    onValueChange={(value) =>
+                      setRotationKind(value as "Kyc" | "Sanctions")
+                    }
+                  >
+                    <SelectTrigger className="h-10 rounded-md border-black/20 bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Kyc">KYC root</SelectItem>
+                      <SelectItem value="Sanctions">Sanctions root</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={rotationRoot}
+                    onChange={(event) => setRotationRoot(event.target.value)}
+                    placeholder="0x..."
+                    className="h-10 rounded-md border-black/20 bg-white font-mono text-xs"
+                  />
+                  <Input
+                    value={rotationEpoch}
+                    type="number"
+                    min={1}
+                    onChange={(event) =>
+                      setRotationEpoch(Number(event.target.value) || 1)
+                    }
+                    className="h-10 rounded-md border-black/20 bg-white font-mono text-xs"
+                  />
+                  <Button
+                    variant="outline"
+                    className="h-10 rounded-md border-black/20 bg-white"
+                    disabled={
+                      rotateRootMutation.isPending ||
+                      !walletAddress ||
+                      !rotationRoot ||
+                      rotationRoot.replace(/^0x/, "").length !== 64
+                    }
+                    onClick={() => rotateRootMutation.mutate()}
+                  >
+                    {rotateRootMutation.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <RefreshCcw className="size-4" />
+                    )}
+                    Rotate root
+                  </Button>
+                </div>
+              </div>
+
               <div className="rounded-md border border-black/15 bg-black p-3 text-white">
                 <div className="flex items-center gap-2 text-sm font-bold uppercase">
                   {mutation.isPending || submitMutation.isPending ? (
@@ -429,7 +604,9 @@ export function ComplianceConsole() {
                   ) : (
                     <CircleDollarSign className="size-4 text-[#eab308]" />
                   )}
-                  {submitMutation.isPending
+                  {rotateRootMutation.isPending
+                    ? "Rotating compliance root"
+                    : submitMutation.isPending
                     ? "Submitting transaction"
                     : mutation.isPending
                       ? "Preparing proof"
@@ -444,6 +621,7 @@ export function ComplianceConsole() {
                   <HashLine label="nullifier" value={authorization?.proof.nullifier} />
                   <HashLine label="proof" value={authorization?.proof.proofHash} />
                   <HashLine label="tx" value={submitMutation.data?.hash} />
+                  <HashLine label="root tx" value={rotateRootMutation.data?.hash} />
                 </div>
                 {submitMutation.data?.hash ? (
                   <a
@@ -457,9 +635,17 @@ export function ComplianceConsole() {
                 ) : null}
               </div>
 
-              {mutation.error || connectMutation.error || submitMutation.error ? (
+              {mutation.error ||
+              connectMutation.error ||
+              submitMutation.error ||
+              rotateRootMutation.error ||
+              gatewayQuery.error ? (
                 <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm font-semibold text-destructive">
-                  {submitMutation.error instanceof Error
+                  {rotateRootMutation.error instanceof Error
+                    ? rotateRootMutation.error.message
+                    : gatewayQuery.error instanceof Error
+                      ? gatewayQuery.error.message
+                      : submitMutation.error instanceof Error
                     ? submitMutation.error.message
                     : connectMutation.error instanceof Error
                       ? connectMutation.error.message
@@ -551,6 +737,29 @@ function shortKey(value: string) {
   return `${value.slice(0, 8)}...${value.slice(-6)}`;
 }
 
+function shortHex(value?: string) {
+  if (!value) return "unavailable";
+  return `${value.slice(0, 10)}...${value.slice(-6)}`;
+}
+
 function formatSettlement(value: string) {
   return value.replaceAll("_", " ");
+}
+
+async function signWithConnectedFreighter(
+  xdr: string,
+  opts?: {
+    address?: string;
+    networkPassphrase?: string;
+  },
+) {
+  const signed = await freighterSignTransaction(xdr, {
+    address: opts?.address,
+    networkPassphrase: opts?.networkPassphrase ?? STELLAR_TESTNET.networkPassphrase,
+  });
+  if (signed.error) throw new Error(signed.error.message);
+  return {
+    signedTxXdr: signed.signedTxXdr,
+    signerAddress: signed.signerAddress,
+  };
 }
