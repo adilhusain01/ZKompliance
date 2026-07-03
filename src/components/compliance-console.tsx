@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { signTransaction as freighterSignTransaction } from "@stellar/freighter-api";
 import {
   ArrowRight,
   BadgeCheck,
@@ -11,6 +12,7 @@ import {
   Database,
   Fingerprint,
   Gauge,
+  ExternalLink,
   KeyRound,
   Landmark,
   Loader2,
@@ -18,7 +20,9 @@ import {
   Play,
   RefreshCcw,
   Route,
+  Send,
   ShieldCheck,
+  WalletCards,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,9 +53,18 @@ import {
   type CorridorCode,
 } from "@/lib/compliance/protocol";
 import { useComplianceStore } from "@/lib/compliance/store";
+import {
+  buildGatewayAuthorization,
+  connectFreighterWallet,
+  STELLAR_TESTNET,
+} from "@/lib/stellar/gateway";
+
+const gatewayContractId =
+  process.env.NEXT_PUBLIC_COMPLIANCE_GATEWAY_CONTRACT_ID ?? "";
 
 export function ComplianceConsole() {
   const input = useComplianceStore();
+  const [walletAddress, setWalletAddress] = useState<string>();
   const corridor = selectCorridor(input.corridor);
   const selectedTier = selectProofTier(input);
   const limitUsed = Math.min(100, Math.round((input.amount / corridor.limit) * 100));
@@ -59,6 +72,59 @@ export function ComplianceConsole() {
 
   const mutation = useMutation({
     mutationFn: authorizePayment,
+  });
+  const connectMutation = useMutation({
+    mutationFn: connectFreighterWallet,
+    onSuccess: (address) => {
+      setWalletAddress(address);
+      if (input.destination === "demo-recipient") {
+        input.setDestination(address);
+      }
+    },
+  });
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      if (!gatewayContractId) {
+        throw new Error("Set NEXT_PUBLIC_COMPLIANCE_GATEWAY_CONTRACT_ID first.");
+      }
+      if (!walletAddress) {
+        throw new Error("Connect Freighter before submitting.");
+      }
+      if (!authorization) {
+        throw new Error("Generate a verified authorization first.");
+      }
+
+      const destination =
+        input.destination === "demo-recipient" ? walletAddress : input.destination;
+      const assembled = await buildGatewayAuthorization({
+        contractId: gatewayContractId,
+        source: walletAddress,
+        destination,
+        authorization,
+      });
+      const sent = await assembled.signAndSend({
+        signTransaction: async (xdr, opts) => {
+          const signed = await freighterSignTransaction(xdr, {
+            address: opts?.address,
+            networkPassphrase:
+              opts?.networkPassphrase ?? STELLAR_TESTNET.networkPassphrase,
+          });
+          if (signed.error) throw new Error(signed.error.message);
+          return {
+            signedTxXdr: signed.signedTxXdr,
+            signerAddress: signed.signerAddress,
+          };
+        },
+      });
+
+      return {
+        hash: sent.sendTransactionResponse?.hash,
+        status:
+          sent.getTransactionResponse?.status ??
+          sent.sendTransactionResponse?.status ??
+          "submitted",
+      };
+    },
   });
 
   const authorization = mutation.data;
@@ -308,34 +374,96 @@ export function ComplianceConsole() {
               <StateRow label="Required tier" value={`Tier ${corridor.minTier}`} />
               <Separator />
               <StateRow label="Selected tier" value={`Tier ${activeTier.id}: ${activeTier.name}`} />
-              <StateRow label="Settlement op" value={corridor.settlement} />
+              <StateRow label="Settlement op" value={formatSettlement(corridor.settlement)} />
               <StateRow label="Contract call" value="authorize_payment" />
+              <StateRow
+                label="Contract"
+                value={gatewayContractId ? shortKey(gatewayContractId) : "not configured"}
+              />
+              <StateRow
+                label="Wallet"
+                value={walletAddress ? shortKey(walletAddress) : "not connected"}
+              />
+
+              <div className="grid gap-2">
+                <Button
+                  variant="outline"
+                  className="h-11 rounded-md border-black/20 bg-white"
+                  disabled={connectMutation.isPending}
+                  onClick={() => connectMutation.mutate()}
+                >
+                  {connectMutation.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <WalletCards className="size-4" />
+                  )}
+                  {walletAddress ? "Freighter connected" : "Connect Freighter"}
+                </Button>
+                <Button
+                  className="h-11 rounded-md bg-black text-white hover:bg-black/85"
+                  disabled={
+                    submitMutation.isPending ||
+                    !authorization ||
+                    !walletAddress ||
+                    !gatewayContractId
+                  }
+                  onClick={() => submitMutation.mutate()}
+                >
+                  {submitMutation.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Send className="size-4" />
+                  )}
+                  Submit to Soroban
+                </Button>
+              </div>
 
               <div className="rounded-md border border-black/15 bg-black p-3 text-white">
                 <div className="flex items-center gap-2 text-sm font-bold uppercase">
-                  {mutation.isPending ? (
+                  {mutation.isPending || submitMutation.isPending ? (
                     <RefreshCcw className="size-4 animate-spin text-[#eab308]" />
+                  ) : submitMutation.data?.hash ? (
+                    <ExternalLink className="size-4 text-[#2dd4bf]" />
                   ) : authorization ? (
                     <CheckCircle2 className="size-4 text-[#2dd4bf]" />
                   ) : (
                     <CircleDollarSign className="size-4 text-[#eab308]" />
                   )}
-                  {mutation.isPending
-                    ? "Preparing proof"
-                    : authorization
-                      ? "Payment authorized"
-                      : "Awaiting intent"}
+                  {submitMutation.isPending
+                    ? "Submitting transaction"
+                    : mutation.isPending
+                      ? "Preparing proof"
+                      : submitMutation.data?.hash
+                        ? "Gateway transaction sent"
+                        : authorization
+                          ? "Payment authorized"
+                          : "Awaiting intent"}
                 </div>
                 <div className="mt-3 grid gap-2 font-mono text-[11px] text-white/60">
                   <HashLine label="intent" value={authorization?.proof.intentId} />
                   <HashLine label="nullifier" value={authorization?.proof.nullifier} />
                   <HashLine label="proof" value={authorization?.proof.proofHash} />
+                  <HashLine label="tx" value={submitMutation.data?.hash} />
                 </div>
+                {submitMutation.data?.hash ? (
+                  <a
+                    className="mt-3 inline-flex text-xs font-bold text-[#2dd4bf] underline-offset-4 hover:underline"
+                    href={`https://stellar.expert/explorer/testnet/tx/${submitMutation.data.hash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View on Stellar Expert
+                  </a>
+                ) : null}
               </div>
 
-              {mutation.error ? (
+              {mutation.error || connectMutation.error || submitMutation.error ? (
                 <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm font-semibold text-destructive">
-                  {mutation.error instanceof Error
+                  {submitMutation.error instanceof Error
+                    ? submitMutation.error.message
+                    : connectMutation.error instanceof Error
+                      ? connectMutation.error.message
+                      : mutation.error instanceof Error
                     ? mutation.error.message
                     : "Authorization failed."}
                 </p>
@@ -416,4 +544,13 @@ function HashLine({ label, value }: { label: string; value?: string }) {
       <span className="truncate">{value ?? "pending"}</span>
     </div>
   );
+}
+
+function shortKey(value: string) {
+  if (value.length <= 14) return value;
+  return `${value.slice(0, 8)}...${value.slice(-6)}`;
+}
+
+function formatSettlement(value: string) {
+  return value.replaceAll("_", " ");
 }
