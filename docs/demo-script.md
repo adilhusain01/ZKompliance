@@ -30,12 +30,19 @@ admin:    GABMPCECAIYWFD5NN5QH4TBEMYZDPIU3NDEFKWGMG364R7BBXP46BY5H
 network:  Test SDF Network ; September 2015
 ```
 
+Configured corridors:
+
+```text
+USDCMXN   USDC  limit 2,500  min tier 2
+USDCPHP   USDC  limit 1,200  min tier 2
+EURCUSDC  EURC  limit 8,000  min tier 3
+```
+
 ## Why Stellar
 
 Stellar already has the corridor, anchor, and regulated asset concepts this project needs. Soroban gives the compliance gateway programmable enforcement, while BN254 host functions make verifier execution practical enough to move proof verification into the settlement transaction.
 
 ## Next Protocol Steps
 
-- Add a second corridor and demonstrate routing-agent proof-tier selection.
 - Extend `authorize_and_transfer` to a Testnet Stellar Asset Contract demo asset.
 - Add quorum proposal and approval flows for multi-issuer root governance.

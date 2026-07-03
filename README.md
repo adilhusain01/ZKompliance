@@ -137,6 +137,14 @@ admin:    GABMPCECAIYWFD5NN5QH4TBEMYZDPIU3NDEFKWGMG364R7BBXP46BY5H
 network:  Test SDF Network ; September 2015
 ```
 
+Configured corridors:
+
+```text
+USDCMXN   USDC  limit 2,500  min tier 2
+USDCPHP   USDC  limit 1,200  min tier 2
+EURCUSDC  EURC  limit 8,000  min tier 3
+```
+
 ## Project Layout
 
 ```text
@@ -158,6 +166,5 @@ scripts/bootstrap-testnet.sh
 
 ## Remaining Real Work
 
-- Add a second deployed corridor and demonstrate routing-agent proof-tier selection.
 - Extend `authorize_and_transfer` to a Testnet Stellar Asset Contract demo asset.
 - Add quorum proposal/approval UI for multi-issuer root governance.

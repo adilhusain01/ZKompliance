@@ -46,4 +46,18 @@ stellar contract invoke "${stellar_args[@]}" -- set_corridor \
   --min_proof_tier 2 \
   --active true
 
+stellar contract invoke "${stellar_args[@]}" -- set_corridor \
+  --code USDCPHP \
+  --asset USDC \
+  --limit 12000000000 \
+  --min_proof_tier 2 \
+  --active true
+
+stellar contract invoke "${stellar_args[@]}" -- set_corridor \
+  --code EURCUSDC \
+  --asset EURC \
+  --limit 80000000000 \
+  --min_proof_tier 3 \
+  --active true
+
 echo "Bootstrapped compliance gateway $CONTRACT_ID"
