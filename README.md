@@ -28,11 +28,13 @@ statements:
 - Zustand for local payment-intent state.
 - Stellar SDK for Stellar account validation.
 - Freighter helpers for wallet connection and transaction signing.
+- Live Freighter submission UI for `authorize_payment` on Testnet.
 - Stellar CLI Soroban workspace under `contracts/`.
 - ZoKrates Groth16/BN128 compliance proof pipeline:
   - circuit source;
   - generated proving and verification artifacts;
   - proof generation in the browser/app runtime;
+  - Poseidon roots, commitments, and replay nullifiers;
   - local verifier checks before contract authorization.
 - Soroban BN254 pairing verifier generated from the ZoKrates verification key.
 - `compliance_gateway` Soroban contract with:
@@ -130,7 +132,7 @@ CONTRACT_ID=your-contract-id STELLAR_ACCOUNT=your-funded-cli-identity npm run bo
 Current Testnet deployment:
 
 ```text
-contract: CDVI6JSZYYK2BRCCZAXPZHOVMIDU4N6XQFRYYVJ5ETYMUNMAXRS3OZGE
+contract: CAVNJJEORHARTAAKWB77DJK6I3TVJWH2MYVDCGBO7DZZTWQQ5QLWGSE6
 admin:    GABMPCECAIYWFD5NN5QH4TBEMYZDPIU3NDEFKWGMG364R7BBXP46BY5H
 network:  Test SDF Network ; September 2015
 ```
@@ -156,8 +158,5 @@ scripts/bootstrap-testnet.sh
 
 ## Remaining Real Work
 
-- Replace the demo field hash in the circuit with a production Poseidon Merkle
-  tree circuit compatible with Soroban Poseidon host functions.
-- Expand the UI from proof preflight to full Freighter submission and live
-  Testnet state readback.
+- Add live Testnet state readback for roots, corridors, nullifiers, and intents.
 - Add issuer/operator dashboards for rotating KYC and sanctions roots.

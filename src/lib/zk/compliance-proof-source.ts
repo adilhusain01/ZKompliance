@@ -1,8 +1,10 @@
 export const COMPLIANCE_TREE_SIZE = 8;
 
-export const COMPLIANCE_ZK_SCHEME = "zokrates-g16-bn128-compliance-v1";
+export const COMPLIANCE_ZK_SCHEME = "zokrates-g16-bn128-compliance-v2";
 
 export const COMPLIANCE_PROOF_SOURCE = `
+from "hashes/poseidon/poseidon" import main as poseidon;
+
 def main(
   private field senderId,
   private field receiverId,
@@ -25,15 +27,15 @@ def main(
   bool mut sanctionsClear = true;
 
   for u32 i in 0..${COMPLIANCE_TREE_SIZE} {
-    computedKycRoot = computedKycRoot * 1315423911 + kycLeaves[i];
-    computedSanctionsRoot = computedSanctionsRoot * 1315423911 + sanctionsLeaves[i];
+    computedKycRoot = poseidon([computedKycRoot, kycLeaves[i]]);
+    computedSanctionsRoot = poseidon([computedSanctionsRoot, sanctionsLeaves[i]]);
     kycIncluded = kycIncluded || kycLeaves[i] == senderId;
     sanctionsClear = sanctionsClear && sanctionsLeaves[i] != senderId && sanctionsLeaves[i] != receiverId;
   }
 
-  field expectedSenderCommitment = senderId * 1000003 + senderSalt * 9176 + kycRoot;
-  field expectedReceiverCommitment = receiverId * 1000003 + receiverSalt * 9176 + sanctionsRoot;
-  field expectedNullifier = senderId * 1000003 + nullifierSalt * 31 + kycRoot + sanctionsRoot;
+  field expectedSenderCommitment = poseidon([senderId, senderSalt, kycRoot]);
+  field expectedReceiverCommitment = poseidon([receiverId, receiverSalt, sanctionsRoot]);
+  field expectedNullifier = poseidon([senderId, nullifierSalt, kycRoot, sanctionsRoot]);
 
   return computedKycRoot == kycRoot
     && computedSanctionsRoot == sanctionsRoot

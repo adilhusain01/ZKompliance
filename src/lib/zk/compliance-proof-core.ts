@@ -2,13 +2,12 @@ import {
   COMPLIANCE_TREE_SIZE,
   COMPLIANCE_ZK_SCHEME,
 } from "@/lib/zk/compliance-proof-source";
+import { poseidon2 } from "poseidon-lite/poseidon2";
+import { poseidon3 } from "poseidon-lite/poseidon3";
+import { poseidon4 } from "poseidon-lite/poseidon4";
 
 const FIELD_PRIME =
   21888242871839275222246405745257275088548364400416034343698204186575808495617n;
-const ROOT_FACTOR = 1315423911n;
-const COMMIT_ID_FACTOR = 1000003n;
-const COMMIT_SALT_FACTOR = 9176n;
-const NULLIFIER_SALT_FACTOR = 31n;
 
 export type CompliancePublicSignals = {
   kycRoot: string;
@@ -165,7 +164,7 @@ function padLeaves(leaves: string[]) {
 
 function computeListRoot(leaves: string[]) {
   const root = leaves.reduce(
-    (hash, leaf) => toFieldBigInt(hash * ROOT_FACTOR + normalizeFieldBigInt(leaf)),
+    (hash, leaf) => poseidon2([hash, normalizeFieldBigInt(leaf)]),
     0n,
   );
   return toFieldHex(root);
@@ -173,9 +172,11 @@ function computeListRoot(leaves: string[]) {
 
 function computeCommitment(id: string, salt: string, root: string) {
   return toFieldHex(
-    normalizeFieldBigInt(id) * COMMIT_ID_FACTOR +
-      normalizeFieldBigInt(salt) * COMMIT_SALT_FACTOR +
+    poseidon3([
+      normalizeFieldBigInt(id),
+      normalizeFieldBigInt(salt),
       normalizeFieldBigInt(root),
+    ]),
   );
 }
 
@@ -186,10 +187,12 @@ function computeNullifier(
   sanctionsRoot: string,
 ) {
   return toFieldHex(
-    normalizeFieldBigInt(senderId) * COMMIT_ID_FACTOR +
-      normalizeFieldBigInt(nullifierSalt) * NULLIFIER_SALT_FACTOR +
-      normalizeFieldBigInt(kycRoot) +
+    poseidon4([
+      normalizeFieldBigInt(senderId),
+      normalizeFieldBigInt(nullifierSalt),
+      normalizeFieldBigInt(kycRoot),
       normalizeFieldBigInt(sanctionsRoot),
+    ]),
   );
 }
 
